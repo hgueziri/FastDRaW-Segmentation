@@ -7,8 +7,6 @@ H.-E. Gueziri, L. Lakhdar, M. J. McGuffin and C. Laporte "FastDRaW – Fast Deli
 
 @author Houssem-Eddine Gueziri
 
-@contact houssem-eddine.gueziri.1@etsmtl.net
-
 ## Requirements:
 
 To run the demo you should install the following dependencies
