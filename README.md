@@ -32,7 +32,7 @@ pip install -r requirements.txt
 
 
 
-## Command list:
+## List of commands:
 
 Mouse:
    - Left click: draw foreground labels
