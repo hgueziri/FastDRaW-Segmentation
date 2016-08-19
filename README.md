@@ -46,7 +46,6 @@ Keyboard:
    - X: save the ROI image (in saved/)
    - Q: Quit the application
    - Z: Undo label
-   - R: Launch RW segmentation
-   - G: Launch GRISLI segmentation
+   - R: Switch between **Random Walker** segmentation and **FastDRaW** segmentation
    - Up arrow: increase the brush thickness
    - Down arrow: decrease the brush thickness
