@@ -25,24 +25,20 @@ pip install -r requirements.txt
 
 ## Example:
 
-`python FastDRaW.py image.png`
+```
+>>> from skimage.data import coins
+>>> import matplotlib.pyplot as plt
+>>> image = coins()
+>>> labels = np.zeros_like(image)
+>>> labels[[129, 199], [155, 155]] = 1 # label some pixels as foreground
+>>> labels[[162, 224], [131, 184]] = 2 # label some pixels as background
+>>> fastdraw = FastDRaW(image, beta=100, downsampled_size=100)
+>>> segm = fastdraw.update(labels)
+>>> plt.imshow(image,'gray')
+>>> plt.imshow(segm, alpha=0.7)
+```
 
+An interactive example using matplotlib is provided for demonstration in 'plot_fast_draw_segmentation.py'
 
+`python plot_fast_draw_segmentation.py`
 
-## List of commands:
-
-Mouse:
-   - Left click: draw foreground labels
-   - Right click: draw background labels
-
-Keyboard:
-   - A: save the current down-sampled segmentation result (in saved/)
-   - S: save the current full-resolution segmentation result (in saved/)
-   - D: save labelled image (in saved/)
-   - C: save the refinement strip image (in saved/)
-   - X: save the ROI image (in saved/)
-   - Q: Quit the application
-   - Z: Undo label
-   - R: Switch between **Random Walker** segmentation and **FastDRaW** segmentation
-   - Up arrow: increase the brush thickness
-   - Down arrow: decrease the brush thickness
