@@ -21,7 +21,7 @@ pip install -r requirements.txt
 
 ## Example:
 
-`python FastDRaW.py image.png`
+`python opencv_example.py image.png`
 
 
 
@@ -32,11 +32,9 @@ Mouse:
    - Right click: draw background labels
 
 Keyboard:
-   - A: save the current down-sampled segmentation result (in saved/)
-   - S: save the current full-resolution segmentation result (in saved/)
-   - D: save labelled image (in saved/)
-   - C: save the refinement strip image (in saved/)
-   - X: save the ROI image (in saved/)
+   - S: save the binary segmentation mask (in saved/)
+   - L: save labelled image (in saved/)
+   - C: save contour result image (in saved/)
    - Q: Quit the application
    - Z: Undo label
    - R: Switch between **Random Walker** segmentation and **FastDRaW** segmentation

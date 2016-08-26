@@ -12,7 +12,6 @@ H.-E. Gueziri, L. Lakhdar, M. J. McGuffin and C. Laporte "FastDRaW – Fast Deli
 To run the demo you should install the following dependencies
 
 - [Scipy and Numpy](https://www.scipy.org/install.html)
-- [PyOpenCV](https://pypi.python.org/pypi/pyopencv/2.1.0.wr1.2.0) (for window management)
 - [scikit-image](http://scikit-image.org/docs/dev/install.html) (for image processing tools)
 - [PyAMG](http://pyamg.org/) (for linear system solver)
 

@@ -1,495 +1,336 @@
-#!/usr/bin/python
-"""
-Created on Tue Apr 29 13:09:45 2016
-
-FastDRaW - Fast Delineation by Random Walker
-
-This software is under the MIT License. If you use this code in your research please
-cite the following article:
-
-H.-E. Gueziri, L. Lakhdar, M. J. McGuffin and C. Laporte "FastDRaW - Fast Delineation by Random
-Walker: application to large images", Interactive Medical Image Computation (IMIC) Workshop, MICCAI 2016.
-
-@author: Houssem-Eddine Gueziri
-@contact: houssem-eddine.gueziri.1@etsmtl.net
-
----------------
-
-LICENSE 
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-"""
-
-import cv2,os,time,sys
-from numpy import (array,zeros,zeros_like,ones_like,hstack,vstack,dstack,arange,
-                   exp,abs,ravel,ravel_multi_index,r_,where,delete,unique,empty,unravel_index,
-                   __version__)
-from numpy import bool as npbool
-from numpy import int8 as npint8
-from numpy import uint8 as npuint8
-from numpy import float32 as npfloat32
-
-from scipy.ndimage import distance_transform_edt,imread
-from skimage.transform import resize as skresize
-from skimage.measure import label as find_label
-from skimage.morphology import dilation,disk
-from skimage.segmentation import random_walker
-
-from scipy.sparse import csr_matrix,coo_matrix
+import numpy as np
+from scipy.ndimage import distance_transform_edt
+from scipy.sparse import csr_matrix, coo_matrix
 from scipy.sparse.linalg import cg as cg_solver
-from threading import Thread,active_count
 
-###############################################################################
-#                   utilities to accelerate execution
-###############################################################################
-nparray=array
-npzeros=zeros
-npzeros_like=zeros_like
-npones_like=ones_like
-nphstack=hstack
-npvstack=vstack
-npdstack=dstack
-npexp=exp
-npabs=abs
-npravel=ravel
-npravel_multi_index=ravel_multi_index
-npr_=r_
-npwhere=where
-npdelete=delete
-npunique=unique
-nparange=arange
-npempty=empty
-npunravel_index=unravel_index
-skimage_version=np.float32(__version__[:4])
+from skimage.transform import resize
+from skimage.measure import label as find_label
+from skimage.morphology import binary_dilation, disk
+from skimage.segmentation import random_walker
+from skimage.color import rgb2grey
+from skimage import img_as_float
 
+from warnings import warn
 
-
-class Segmentation():
+class FastDRaW():
+    """A fast segmentation algorithm based on the random walker algorithm.
+        
+    FastDRaW implemented for 2D images as described in [1].
+    The algorithm performs in a two-step segmetnation. In the first step, a
+    random walker segmentation is performed on a small (down-sampled)
+    version of the image to obtain a coarse segmentation contour. In the
+    second step, the result is refined by applying a second random walker
+    segmentation over a narrow strip around the coarse contour.
     
-    def __init__(self,imageName):
-        self.drawingR = False 
-        self.drawingL = False
-        self.brushSize=3
+    Parameters
+    ----------
+    image : array_like
+        Image to be segmented. If `image` is multi-channel it will
+        be converted to gray-level image before segmentation.
+    beta : float
+        Penalization coefficient for the random walker motion
+        (the greater `beta`, the more difficult the diffusion).
+    downsampled_size : int, default 100
+        The size of the down-sampled image. Should be smaller than the
+        size of the original image. Recommended values between 100 and 200.
+    tol : float
+        tolerance to achieve when solving the linear system, in
+        cg' and 'cg_mg' modes.
+    return_full_prob : bool, default False
+        If True, the probability that a pixel belongs to each of the labels
+        will be returned, instead of boolean array.
+    
+    See also
+    --------
+    skimage.segmentation.random_walker: random walker segmentation
+        The original random walker algorithm.
         
-        self.update_cpt=1
-        self.m_saveID=0
-        self.maskOfInterest=None
-        self.im_maskOfInterest=None
-        self.img_contour=None
-        self.small_img_contour=None
-        self.im_to_save=None
+    References
+    ----------
+    [1] H.-E. Gueziri, L. Lakhdar, M. J. McGuffin and C. Laporte,
+    "FastDRaW - Fast Delineation by Random Walker: application to large
+    images", MICCAI Workshop on Interactive Medical Image Computing (IMIC),
+    Athens, Greece, (2016).
+    
+    Examples
+    --------
+    >>> from skimage.data import coins
+    >>> import matplotlib.pyplot as plt
+    >>> image = coins()
+    >>> labels = np.zeros_like(image)
+    >>> labels[[129, 199], [155, 155]] = 1 # label some pixels as foreground
+    >>> labels[[162, 224], [131, 184]] = 2 # label some pixels as background
+    >>> fastdraw = FastDRaW(image, beta=100, downsampled_size=100)
+    >>> segm = fastdraw.update(labels)
+    >>> plt.imshow(image,'gray')
+    >>> plt.imshow(segm, alpha=0.7)
+    """
+    
+    def __init__(self, image, beta=300, downsampled_size=100,
+                 tol=1.e-3, return_full_prob=False):
         
-        self.currentSegmentationApproach=self.FastDRaW
+        assert (beta > 0), 'beta should be positive.'
+        self.beta = beta
+        self.return_full_prob = return_full_prob
+        self.image = rgb2grey(image)
+        ## It is important to normalize the data between [0,1] so that beta
+        ## makes sens
+        self.image = img_as_float(self.image)
         
-        self.RUNNING_THREADS = active_count()
+        if downsampled_size > min(self.image.shape):
+            warn('The size of the downsampled image if larger than the '
+                 'original image. The computation time could be affected.')
         
+        ## Compute the graph's Laplacian for both the full resolution `L` 
+        ## and the down-sampled `ds_L` images
+        self.L = self._buildGraph(self.image)
+        ratio = float(self.image.shape[0])/self.image.shape[1]
+        self.dim = (int(downsampled_size*ratio), downsampled_size)
+        self.ds_image = resize(self.image, self.dim, order=0,
+                                 preserve_range=True)
+        self.ds_L = self._buildGraph(self.ds_image)
         
-        self.img = cv2.imread(imageName,cv2.CV_LOAD_IMAGE_COLOR)
-        self.img_labelled=self.img.copy()
-        self.markers=npzeros((self.img.shape[0],self.img.shape[1]))
-        #------
-        cv2.namedWindow('image')
-        cv2.moveWindow('image', 0, 0)
-        cv2.setMouseCallback('image',self.drawing,[self.markers])
-        cv2.imshow('image',self.img)
-        
-        
-        self.m_cpt=0
-        self.m_index_array=nparray([0,0])
-        
-        self.RW_BETA=300
-        
-        self.rgbImage=imread(imageName)/255.0
-        if self.rgbImage.ndim == 2:
-            self.rgbImage=npdstack((z,z,z))
-        elif self.rgbImage.ndim == 3:
-            if self.rgbImage.shape[2]==4:
-                self.rgbImage=self.rgbImage[...,0:3]
-        
-        self.L=self.buildGraph(self.rgbImage.mean(2),self.RW_BETA)
-        self.miniL,self.im_image,self.dim = self.avt_RW(self.RW_BETA)
-             
-        while(1):
-            
-            k = cv2.waitKey(0) & 0xFF
-        
-            if k == ord('q'):
-                break
-            elif k == 82:
-                self.brushSize=min(self.brushSize+1,10)
-                print "brushSize",self.brushSize
-            elif k == 84:
-                self.brushSize=max(self.brushSize-1,0)
-                print "brushSize",self.brushSize
-                
-         
-            elif k == ord('r'):
-                ## sweitch between segmentations
-                if self.currentSegmentationApproach==self.FastDRaW:
-                    self.currentSegmentationApproach=self.randomWalkerSegmentation
-                else:
-                    self.currentSegmentationApproach=self.FastDRaW
-            
-            elif k==ord('d'):
-                cv2.imwrite("saved"+os.sep+str(self.m_saveID)+".png",self.img_labelled)
-                self.m_saveID+=1
-                print "Image saved - Label image"
-                
-            elif k==ord('s'):
-                if self.img_contour is not None:
-                    savedimage=self.img.copy()
-                    savedimage[self.img_contour,:]=(0,255,255)
-                    cv2.imwrite("saved"+os.sep+str(self.m_saveID)+".png",savedimage)
-                    self.m_saveID+=1
-                    print "Image saved - Contour image"
-            
-            elif k==ord('a'):
-                if self.small_img_contour is not None:
-                    cv2.imwrite("saved"+os.sep+str(self.m_saveID)+".png",(self.small_img_contour*255).astype(npuint8))
-                    self.m_saveID+=1
-                    print "Image saved - Downsampled contour image"
-        
-            elif k==ord('c'):
-                if self.maskOfInterest is not None:
-                    
-                    # display seeds
-                    ds_image=skresize(self.img,(self.dim[1],self.dim[0],3),order=0,preserve_range=True)
-                    savedimage=skresize(ds_image,(self.markers.shape[0],self.markers.shape[1],3),order=0,preserve_range=True).astype(npuint8)
-                    mask=npzeros_like(self.img)
-                    mask[self.maskOfInterest]=(255,255,0)
-                    cv2.addWeighted(savedimage, 0.7, mask, 0.3, 0.0, savedimage)
-                    cv2.imwrite("saved"+os.sep+str(self.m_saveID)+".png",savedimage)
-                    self.m_saveID+=1
-                    print "Image saved - Ring image"
-            
-            elif k==ord('x'):
-                    # display seeds
-                ds_image=skresize(self.img,(self.dim[1],self.dim[0],3),order=0,preserve_range=True)
-                savedimage=skresize(ds_image,(self.markers.shape[0],self.markers.shape[1],3),order=0,preserve_range=True).astype(npuint8)
-                ROI=skresize(self.im_maskOfInterest.astype(npbool),(self.markers.shape[0],self.markers.shape[1]),order=0,preserve_range=True)
-                ROI=ROI.astype(npbool)
-                mask=npzeros_like(savedimage)
-                mask[ROI & ~(self.markers%2==1) & ~((self.markers%2==0)&(self.markers>0))]=(255,255,0)
-                cv2.addWeighted(savedimage, 0.7, mask, 0.3, 0.0, savedimage)
-                cv2.imwrite("saved"+os.sep+str(self.m_saveID)+".png",savedimage)
-                self.m_saveID+=1
-                print "Image saved - ROI image"
-        
-            elif k==ord('v'):
-                
-                ds_image=skresize(self.img,(self.dim[1],self.dim[0],3),order=0,preserve_range=True)
-                savedimage=skresize(ds_image,(self.markers.shape[0],self.markers.shape[1],3),order=0,preserve_range=True).astype(npuint8)
-                cv2.imwrite("saved"+os.sep+str(self.m_saveID)+".png",savedimage)
-                self.m_saveID+=1
-                print "Image saved - Downsampled image"
-                
-            elif k == ord('z'):
-                saveDrawnCont=self.markers==-1
-                self.maskOfInterest=None
-                if self.m_cpt>0:
-                    indx=npwhere(self.m_index_array[1:,1]==self.markers.max())[0]
-                    self.m_index_array=npdelete(self.m_index_array,indx+1,axis=0)
-                    self.img = cv2.imread(imageName,cv2.CV_LOAD_IMAGE_COLOR)
-                    self.markers=npzeros_like(self.markers)
-                    for i in npunique(self.m_index_array[1:,1]):
-                        indx=npwhere(self.m_index_array[:,1]==i)[0]
-                        x,y=npunravel_index(self.m_index_array[indx,0],self.markers.shape)           
-                        self.markers[x,y]=self.m_index_array[indx,1]
-                    
-                        if i%2==1:
-                            self.img[x,y]=(0,0,255)
-                        elif i%2==0:
-                            self.img[x,y]=(0,255,0)
-        
-                    self.markers[saveDrawnCont]=-1
-                    self.img[saveDrawnCont]=(0,255,255)
-                    self.img_labelled=self.img.copy()
-                    self.m_cpt-=2
-                    cv2.imshow('image',self.img)
-                elif any(saveDrawnCont):
-                    self.markers=npzeros_like(self.markers)
-                    self.img = cv2.imread(imageName,cv2.CV_LOAD_IMAGE_COLOR)
-                    self.img_labelled=self.img.copy()
-                    cv2.imshow('image',self.img)
-                    
-                
-        
-        print "out"
-        cv2.destroyAllWindows()
+        ## Initialize the ROI to zero
+        self.ds_maskROI = np.zeros_like(self.ds_image, dtype=np.bool)
+        ## `full_to_ds_ratio` is used to convert labels from full resolution
+        ## image to down-sampled image
+        self.full_to_ds_ratio = (float(self.dim[0])/self.image.shape[0],
+                                 float(self.dim[1])/self.image.shape[1])
 
-    def buildGraph(self,image,RW_BETA):
-        ## Building the graph: vertices, edges and weights
-        vertices = nparange(image.shape[0] * image.shape[1]).reshape(image.shape)
-        edges_right = npvstack((vertices[:, :-1].ravel(),vertices[:, 1:].ravel()))
-        edges_down = npvstack((vertices[:-1].ravel(), vertices[1:].ravel()))
-        edges = nphstack((edges_right, edges_down))
-        gr_right = npabs(image[:, :-1] - image[:, 1:]).ravel()
-        gr_down = npabs(image[:-1] - image[1:]).ravel()
-        weights = npexp(- RW_BETA * npr_[gr_right, gr_down]**2)+1e-6
+    def _buildGraph(self, image):
+        """Builds the graph: vertices, edges and weights from the `image` 
+        and returns the graph's Laplacian `L`.
+        """
+        # Building the graph: vertices, edges and weights
+        nsize = reduce(lambda x, y : x*y, image.shape,1)
+        vertices = np.arange(nsize).reshape(image.shape)
+        edges_right = np.vstack((vertices[:, :-1].ravel(),
+                                 vertices[:, 1:].ravel()))
+        edges_down = np.vstack((vertices[:-1].ravel(),
+                                vertices[1:].ravel()))
+        edges = np.hstack((edges_right, edges_down))
         
-        ## Compute the graph's Laplacian L
+        gr_right = np.abs(image[:, :-1] - image[:, 1:]).ravel()
+        gr_down = np.abs(image[:-1] - image[1:]).ravel()
+        weights = np.exp(-self.beta * np.r_[gr_right, gr_down]**2)+1e-6
+        
+        # Compute the graph's Laplacian L
         pixel_nb = edges.max() + 1
-        diag = nparange(pixel_nb)
-        i_indices = nphstack((edges[0], edges[1]))
-        j_indices = nphstack((edges[1], edges[0]))
-        data = nphstack((-weights, -weights))
+        diag = np.arange(pixel_nb)
+        i_indices = np.hstack((edges[0], edges[1]))
+        j_indices = np.hstack((edges[1], edges[0]))
+        data = np.hstack((-weights, -weights))
         lap = coo_matrix((data, (i_indices, j_indices)),
                                 shape=(pixel_nb, pixel_nb))
-        connect = - npravel(lap.sum(axis=1))
-        lap = coo_matrix((nphstack((data, connect)),
-                         (nphstack((i_indices, diag)),
-                          nphstack((j_indices, diag)))),
-                          shape=(pixel_nb, pixel_nb))
-        L=lap.tocsr()
+        connect = - np.ravel(lap.sum(axis=1))
+        lap = coo_matrix((np.hstack((data, connect)),
+                         (np.hstack((i_indices, diag)),
+                         np.hstack((j_indices, diag)))),
+                         shape=(pixel_nb, pixel_nb))
+        L = lap.tocsr()
         
         return L
         
-    
-    # mouse callback function
-    def drawing(self,event,x,y,flags,param):
+    def _check_parameters(self, labels, target_label):
+        if target_label not in np.unique(labels):
+            warn('The target label '+str(target_label)+ \
+                 ' does not match any label')
+            return 1
+        if (labels != 0).all():
+            warn('The segmentation is computed on the unlabeled area '
+                 '(labels == 0). No zero valued areas in labels were '
+                 'found. Returning provided labels.')
+            return -1
+        return 1
+                
+    def _compute_relevance_map(self, labels):
+        """Computes the relevance map from labels and initialize 
+        down-sampled label image `ds_labels`.
         
-    
-        if event == cv2.EVENT_LBUTTONDOWN:
-            self.drawingL = True
-            self.drawingR=False
-            
-            
-        elif event == cv2.EVENT_RBUTTONDOWN:
-            self.drawingR = True
-            self.drawingL=False
-    
-    
-        elif event == cv2.EVENT_MOUSEMOVE:
-            if self.drawingL == True:
-                self.update_cpt+=1
-                if self.update_cpt%5==0:
-                    self.update_cpt=1
-    
-                    if active_count()<=self.RUNNING_THREADS:
-                        thread = Thread(target = self.currentSegmentationApproach, args = (self.markers,))
-                        thread.start()
-    
-                cv2.circle(self.img_labelled,(x,y),self.brushSize,(0,0,255),-1)
-                cv2.circle(self.markers,(x,y),self.brushSize,self.m_cpt+1,-1)
-                                
-            elif self.drawingR == True:
-                self.update_cpt+=1
-                if self.update_cpt%5==0:
-                    self.update_cpt=1
-                    if active_count()<=self.RUNNING_THREADS:
-                        thread = Thread(target = self.currentSegmentationApproach, args = (self.markers,))
-                        thread.start()
-                                        
-                cv2.circle(self.img_labelled,(x,y),self.brushSize,(0,255,0),-1)
-                cv2.circle(self.markers,(x,y),self.brushSize,self.m_cpt+2,-1)
-     
-     
-    
-        elif event == cv2.EVENT_LBUTTONUP:
-            self.drawingL = False
-            cv2.circle(self.img_labelled,(x,y),self.brushSize,(0,0,255),-1)
-            cv2.circle(self.markers,(x,y),self.brushSize,self.m_cpt+1,-1)
-            ixy=npravel_multi_index(npwhere(self.markers==self.m_cpt+1),self.markers.shape)
-            vect=npvstack((ixy,nparray([self.m_cpt+1]*len(ixy)))).T
-            self.m_index_array=npvstack((self.m_index_array,vect))
-            self.m_cpt+=2
-            
-            while active_count()>self.RUNNING_THREADS:
-                time.sleep(0.001)
-            if active_count()<=self.RUNNING_THREADS:
-                thread = Thread(target = self.currentSegmentationApproach, args = (self.markers,))
-                thread.start()
-    
-        elif event == cv2.EVENT_RBUTTONUP:
-            self.drawingR = False
-            cv2.circle(self.img_labelled,(x,y),self.brushSize,(0,255,0),-1)
-            cv2.circle(self.markers,(x,y),self.brushSize,self.m_cpt+2,-1)
-            ixy=npravel_multi_index(npwhere(self.markers==self.m_cpt+2),self.markers.shape)
-            vect=npvstack((ixy,nparray([self.m_cpt+2]*len(ixy)))).T
-            self.m_index_array=npvstack((self.m_index_array,vect))
-            self.m_cpt+=2
-            
-            while active_count()>self.RUNNING_THREADS:
-                time.sleep(0.001)
-            if active_count()<=self.RUNNING_THREADS:
-                thread = Thread(target = self.currentSegmentationApproach, args = (self.markers,))
-                thread.start()
-    
-        self.img=self.img_labelled.copy()
-        if self.img_contour is not None:
-            self.img[self.img_contour,:]=(0,255,255)
-        cv2.imshow('image',self.img)
+        The relevance map assumes that the object boundary is more likely to
+        be located somwhere between different label categories, i.e. two labels
+        of the same category generate a low energy, where two labels of 
+        different categories generate high energy, therefore precluding 
+        redundent label information. The relevance map is computed using the 
+        sum of the distance transforms for each label category."""
         
-      
-    
-    
-    
-    def avt_RW(self,RW_BETA):
-        image=self.rgbImage
-        ratio=float(image.shape[1])/image.shape[0]
-        dim=(int(100*ratio),100)
-        im_image=skresize(image.mean(2),dim[::-1],order=0,preserve_range=True)
-     
-        miniL=self.buildGraph(im_image,RW_BETA)
+        self.ds_labels = np.zeros(self.dim)
+        ds_relevance_map = 0
+        for i in np.unique(labels):
+            if i != 0:
+                # 2.1- Compute the coarse label image
+                y,x = np.where(labels == i)
+                self.ds_labels[np.int32(y*self.full_to_ds_ratio[0]),
+                          np.int32(x*self.full_to_ds_ratio[1])] = i
+                # 2.2- Compute the energy map
+                M = np.ones_like(self.ds_labels)
+                M[self.ds_labels == i] = 0
+                distance_map = distance_transform_edt(M)
+                ds_relevance_map +=  distance_map
         
-        return miniL,im_image,dim
+        # 2.3- Normalize the energy map and compute the ROI
+        ds_relevance_map = ds_relevance_map / ds_relevance_map.max()
+        return ds_relevance_map
         
-    
-    
-    def FastDRaW(self,markers):
-        tt=time.clock()
+    def _coarse_random_walker(self, target_label):
+        """Performs a coarse random walker segmentation on the down-sampled
+        image.
         
-        im_markers=skresize(markers,self.dim[::-1],order=0,preserve_range=True)
-        im_entropyMap=0
+        Parameters
+        ----------
+        target_label : int
+            The label category to comput the segmentation for. `labels` should
+            contain at least one pixel with value `target_label`
         
-        for i in range(2):
-            M=npones_like(im_markers)
-            M[(im_markers%2==i)&(im_markers>0)]=0
-            distMap=distance_transform_edt(M)
-            im_entropyMap +=  distMap
-            
-        im_entropyMap /=im_entropyMap.max()
-        
-        if self.im_maskOfInterest is None:
-            self.im_maskOfInterest=(im_entropyMap<=im_entropyMap.mean() - im_entropyMap.std())
-        else:
-            self.im_maskOfInterest=self.im_maskOfInterest | (im_entropyMap<=im_entropyMap.mean() - im_entropyMap.std())
-    
-        unlabeled=npravel_multi_index(npwhere((im_markers==0)&(self.im_maskOfInterest)),im_markers.shape)
-        labeled=npravel_multi_index(npwhere((im_markers>0)&(self.im_maskOfInterest)),im_markers.shape)
-    
-        ## Preparing the right handside of the equation BT xs
-        B = self.miniL[unlabeled][:, labeled]
-        mask= im_markers.flatten()[labeled]%2==1
+        Returns
+        -------
+        ds_probability : ndarray of the same size as `ds_image`
+            Array of the probability between [0.0, 1.0], of each pixel
+            to belong to `target_label`
+        """
+        unlabeled = np.ravel_multi_index(np.where((self.ds_labels == 0) & \
+                        (self.ds_maskROI)), self.ds_labels.shape)
+        labeled = np.ravel_multi_index(np.where((self.ds_labels > 0) & \
+                        (self.ds_maskROI)), self.ds_labels.shape)
+        # 3.1- Preparing the right handside of the equation BT xs
+        B = self.ds_L[unlabeled][:, labeled]
+        mask = self.ds_labels.flatten()[labeled] == target_label
         fs = csr_matrix(mask)
         fs = fs.transpose()
-        rhs=B * fs
-        
-        ## Preparing the left handside of the equation Lu
-        Lu=self.miniL[unlabeled][:, unlabeled]
-        
-    
-        ## Solve the linear equation Lu xu = -BT xs
-        probability=cg_solver(Lu, -rhs.todense(), tol=1e-3, maxiter=120)[0]
+        rhs = B * fs
+        # 3.2- Preparing the left handside of the equation Lu
+        Lu = self.ds_L[unlabeled][:, unlabeled]
+        # 3.3- Solve the linear equation Lu xu = -BT xs
+        xu = cg_solver(Lu, -rhs.todense(), tol=1e-3, maxiter=120)[0]
 
-        miniProba=npzeros_like(im_markers,dtype=npfloat32)
-        miniProba[(im_markers==0)&(self.im_maskOfInterest)]=probability
-        miniProba[(im_markers%2==1)&(self.im_maskOfInterest)]=1   
-    
-        mask=miniProba>=0.5
-        mask=(dilation(mask,disk(1))-mask).astype(npbool)
-        entropyMap=distance_transform_edt(mask!=1)
+        ds_probability = np.zeros_like(self.ds_labels, dtype=np.float32)
+        ds_probability[(self.ds_labels == 0) & (self.ds_maskROI)] = xu
+        ds_probability[(self.ds_labels == target_label) & (self.ds_maskROI)] = 1
         
+        return ds_probability
         
-#        initialGuess=skresize(miniProba,(markers.shape[0],markers.shape[1]),order=1,preserve_range=True)
-        self.small_img_contour=self.rgbImage.copy()
-        cont=skresize(mask,(markers.shape[0],markers.shape[1]),order=0,preserve_range=True)
-        cont=cont.astype(npbool)
-        self.small_img_contour[cont]=(0,1,1)
+    def _refinement_random_walker(self, target_label, labels):
+        """Performs a random walker segmentation over a small region 
+        `self.maskROI` around the coarse contour on the full resolution image. 
         
-        self.maskOfInterest=(entropyMap<=3)
-            
-        labeledImage=find_label(self.maskOfInterest,background=True)
-#        if skimage_version<0.12:
-#            labeledImage=labeledImage-1
-#            print "substraction"
-        labeledImage=skresize(labeledImage,(markers.shape[0],markers.shape[1]),order=0,preserve_range=True)
-        labeledImage=labeledImage.astype(npint8)
+        Requires `target_label` and `labels`
         
-        self.maskOfInterest=skresize(self.maskOfInterest,(markers.shape[0],markers.shape[1]),order=0,preserve_range=True)
-        self.maskOfInterest=self.maskOfInterest.astype(npbool)
+        Returns
+        -------
+        probability : ndarray of the same size as `image`
+            Array of the probability between [0.0, 1.0], of each pixel
+            to belong to `target_label`
+        """
+        labeledImage = find_label(self.maskROI, background=True)
+        ds_added_labels = self.ds_labels
+        # for pixels outside the refinement region (ring), if their connected
+        # region contains `target_label` pixels, than all pixels of the region 
+        # should be labeled as `target_label`.
+        # TODO : this code could be optimized
+        for area in np.unique(labeledImage):
+            if area != -1:
+                if target_label in self.ds_labels[labeledImage == area]:
+                    ds_added_labels[labeledImage == area] = target_label
         
+        added_labels = resize(ds_added_labels, labels.shape, order=0,
+                              preserve_range=True)
+
+        self.maskROI = resize(self.maskROI, labels.shape, order=0,
+                              preserve_range=True)
+        self.maskROI = self.maskROI.astype(np.bool)
         
-        ## Extract labelled and unlabelled vertices
-        m_unlabeled=(markers==0)&(self.maskOfInterest)
-        m_foreground=((markers%2)==1)|(labeledImage>=1)
-    
+        # Extract labelled and unlabelled vertices
+        m_unlabeled = (added_labels == 0) & (self.maskROI)
+        m_foreground = (added_labels == target_label)
         
-        unlabeled=npravel_multi_index(npwhere(m_unlabeled),markers.shape)
-        labeled=npravel_multi_index(npwhere((markers>0)|(labeledImage>=0)),markers.shape)
-        
-        ## Preparing the right handside of the equation BT xs
+        unlabeled = np.ravel_multi_index(np.where(m_unlabeled), labels.shape)
+        labeled = np.ravel_multi_index(np.where((m_foreground) | \
+                                 (added_labels > 0)), labels.shape)
+
+        # Preparing the right handside of the equation BT xs
         B = self.L[unlabeled][:, labeled]
-        mask= (m_foreground).flatten()[labeled]
+        mask = (added_labels[added_labels > 0]).flatten() == target_label
         fs = csr_matrix(mask).transpose()
-        rhs=B * fs
+        rhs = B * fs
         
-        ## Preparing the left handside of the equation Lu
-        Lu=self.L[unlabeled][:, unlabeled]
+        # Preparing the left handside of the equation Lu
+        Lu = self.L[unlabeled][:, unlabeled]
         
-        ## Solve the linear equation Lu xu = -BT xs
-        probability=cg_solver(Lu, -rhs.todense(),x0=(unlabeled*0)+0.5,tol=1e-3, maxiter=120)[0]
+        # Solve the linear equation Lu xu = -BT xs
+        xu = cg_solver(Lu, -rhs.todense(), tol=1e-3, maxiter=120)[0]
         
+        probability = np.zeros_like(labels, dtype=np.float32)
+        probability[m_unlabeled] = xu
+        probability[m_foreground] = 1
         
-        ## Display the result at 0.5 probability threshold   
-        x0=npzeros_like(markers,dtype=npfloat32)
-        x0[m_unlabeled]=probability
-        x0[m_foreground]=1
+        return probability
         
+    def update(self, labels, target_label=1, k=1):
+        """Updates the segmentation according to `labels` using the
+        FastDRaW algorithm.
+        The segmentation is computed in two stages. (1) coputes a coarse 
+        segmentation on a down-sampled version of the image, (2) refines the 
+        segmentation on the original image.
         
-        mask=x0>=0.5
-        mask=(dilation(mask,disk(2))-mask).astype(npbool)
-        self.img_contour=mask.copy()
-        self.img=self.img_labelled.copy()
-        self.img[mask,:]=(0,255,255)
-        cv2.imshow('image',self.img)
+        Parameters
+        ----------
+        labels : array of ints, of same shape as `image`
+            Array of seed markers labeled with different positive integers
+            (each label category is represented with an integer value). 
+            Zero-labeled pixels represent unlabeled pixels.
+        target_label : int
+            The label category to comput the segmentation for. `labels` should
+            contain at least one pixel with value `target_label`
+        k : float
+            Control the size of the region of interest (ROI). Large positive
+            value of `k` allows a larger ROI.
         
-        print "------------------------------ FastDRaW:",time.clock()-tt
+        Returns
+        -------
+        output : ndarray
+            * If `return_full_prob` is False, array of bools of same shape as
+              `image`, in which pixels have been labeled True if they belong
+              to `target_label`, and False otherwise.
+            * If `return_full_prob` is True, array of floats of same shape as
+              `image`. in witch each pixel is assigned the probability to
+              belong to `target_label`.
+          """
+        ## 1- Checking if inputs are valide
+        _err = self._check_parameters(labels, target_label)
+        if _err == -1:
+            segm = labels == target_label
+            if self.return_full_prob:
+                return segm.astype(np.float)
+            else:
+                return segm
         
+        ## 2- Create down-sampled (coarse) image size 
+        ## and compute the energy map
+        ds_relevance_map = self._compute_relevance_map(labels)
         
-        
-    def randomWalkerSegmentation(self,markers):
-        tt=time.clock()
-        
-        image=self.rgbImage
-        markersBin=npzeros_like(markers)
-        markersBin[markers%2==1]=1
-        markersBin[markers%2==0]=2
-        markersBin[markers==0]=0
+        # Threshold the energy map and append new region to the existing ROI
+        threshold = ds_relevance_map.mean() + k*ds_relevance_map.std()
+        self.ds_maskROI = self.ds_maskROI | (ds_relevance_map <= threshold)
     
-        probability=random_walker(image, markersBin, beta=self.RW_BETA, mode='cg_mg',
-                                  return_full_prob=True,multichannel=True)
-    
-        ## Display the result at 0.5 probability threshold
-        mask=probability[0,...]>=0.5
-        mask=dilation(mask,disk(2))-mask
-        self.img_contour=mask.copy()
-        self.img=self.img_labelled.copy()
-        self.img[mask,:]=(0,255,255)
-        cv2.imshow('image',self.img)
+        ## 3- Performe a corse RW segmentation on the down-sampled image
+        ds_probability = self._coarse_random_walker(target_label) 
         
-        print "------------------------------ RW:",time.clock()-tt
+        # Compute the corse segmentation result 
+        mask = ds_probability >= 0.5
+        mask = (binary_dilation(mask, disk(1)) - mask).astype(np.bool)
+        # Compute the refinement region around the corse result
+        self.maskROI = binary_dilation(mask, disk(3))
+#        relevance_map = distance_transform_edt(mask != 1)
+#        self.maskROI = (relevance_map <= 3)
+            
+        ## 4- Performe a fine RW segmentation on the full resolution image
+        ##    only on the refinement region
+        probability = self._refinement_random_walker(target_label, labels)
         
-
-    
-    
-    
-###############################################################################
-#                                   MAIN                                      #
-###############################################################################
-
-if __name__=="__main__":
-
-    if len(sys.argv)<2:
-	imageName="image.png"
-    else:
-	imageName=sys.argv[1]
-    Segmentation(imageName)
-
+        # 5- threshold the probability map above 0.5
+        if self.return_full_prob:
+            return  probability
+        else:
+            segm = (probability >= 0.5)
+            return segm
+     
