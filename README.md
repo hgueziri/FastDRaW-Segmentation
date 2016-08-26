@@ -38,7 +38,14 @@ pip install -r requirements.txt
 >>> plt.imshow(segm, alpha=0.7)
 ```
 
-An interactive example using matplotlib is provided for demonstration in 'plot_fast_draw_segmentation.py'
+An example using matplotlib for interactive demonstration is provided in 'plot_fast_draw_segmentation.py'
 
 `python plot_fast_draw_segmentation.py`
+
+A more advanced example using OpenCV interaction window is provided in 'opencv_demo/opencv_example.py' (requires to install PyOpenCV, see README.md file for more details)
+
+```
+cd  opencv_demo
+python opencv_example.py image.png
+```
 
