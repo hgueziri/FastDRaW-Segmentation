@@ -4,20 +4,28 @@ This is a quick demo using OpenCV-based window for image labeling
 
 ## Requirements:
 
-To run the demo you should install the following dependencies
+FastDRaW requires the following packages
 
 - [Scipy and Numpy](https://www.scipy.org/install.html)
-- [PyOpenCV](https://pypi.python.org/pypi/pyopencv/2.1.0.wr1.2.0) (for window management)
 - [scikit-image](http://scikit-image.org/docs/dev/install.html) (for image processing tools)
 - [PyAMG](http://pyamg.org/) (for linear system solver)
+
+Or run (if not already installed)
+
+```shell
+apt-get install build-essential python2.7-dev
+pip install -r requirements.txt
+```
+
+To run this demo you should install the opencv
+
+- [PyOpenCV](https://pypi.python.org/pypi/pyopencv/2.1.0.wr1.2.0) (for window management)
 
 Or run
 
 ```shell
-apt-get install build-essential python2.7-dev python-opencv
-pip install -r requirements.txt
+apt-get install python-opencv
 ```
-
 
 ## Example:
 
