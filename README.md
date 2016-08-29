@@ -9,7 +9,7 @@ H.-E. Gueziri, L. Lakhdar, M. J. McGuffin and C. Laporte "FastDRaW – Fast Deli
 
 ## Requirements:
 
-To run the demo you should install the following dependencies
+FastDRaW requires the following packages
 
 - [Scipy and Numpy](https://www.scipy.org/install.html)
 - [scikit-image](http://scikit-image.org/docs/dev/install.html) (for image processing tools)
@@ -18,10 +18,9 @@ To run the demo you should install the following dependencies
 Or run
 
 ```shell
-apt-get install build-essential python2.7-dev python-opencv
+apt-get install build-essential python2.7-dev
 pip install -r requirements.txt
 ```
-
 
 ## Example:
 
