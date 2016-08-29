@@ -13,8 +13,8 @@ FastDRaW requires the following packages
 Or run (if not already installed)
 
 ```shell
-apt-get install build-essential python2.7-dev
-pip install -r requirements.txt
+sudo apt-get install build-essential python2.7-dev
+sudo pip install -r requirements.txt
 ```
 
 To run this demo you should install the opencv
@@ -24,7 +24,7 @@ To run this demo you should install the opencv
 Or run
 
 ```shell
-apt-get install python-opencv
+sudo apt-get install python-opencv
 ```
 
 ## Example:
