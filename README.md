@@ -17,7 +17,7 @@ To run the demo you should install the following dependencies
 
 Or run
 
-```
+```shell
 apt-get install build-essential python2.7-dev python-opencv
 pip install -r requirements.txt
 ```
@@ -25,7 +25,7 @@ pip install -r requirements.txt
 
 ## Example:
 
-```
+```python
 >>> from skimage.data import coins
 >>> import matplotlib.pyplot as plt
 >>> image = coins()
@@ -38,13 +38,16 @@ pip install -r requirements.txt
 >>> plt.imshow(segm, alpha=0.7)
 ```
 
-An example using matplotlib for interactive demonstration is provided in 'plot_fast_draw_segmentation.py'
+An example using matplotlib for interactive demonstration is provided in 'plot_fast_draw_segmentation.py'. Use the mouse to draw labels, left click for foreground and right click for background.
+Use 'space bar' key to perform a segmentation.
 
-`python plot_fast_draw_segmentation.py`
-
-A more advanced example using OpenCV interaction window is provided in 'opencv_demo/opencv_example.py' (requires to install PyOpenCV, see README.md file for more details)
-
+```shell
+python plot_fast_draw_segmentation.py
 ```
+
+A more advanced example using OpenCV interaction window is provided in 'opencv_demo/opencv_example.py' (requires to install PyOpenCV, see opencv_demo/README.md file for more details)
+
+```shell
 cd  opencv_demo
 python opencv_example.py image.png
 ```

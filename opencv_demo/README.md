@@ -13,7 +13,7 @@ To run the demo you should install the following dependencies
 
 Or run
 
-```
+```shell
 apt-get install build-essential python2.7-dev python-opencv
 pip install -r requirements.txt
 ```
@@ -21,9 +21,9 @@ pip install -r requirements.txt
 
 ## Example:
 
-`python opencv_example.py image.png`
-
-
+```shell
+python opencv_example.py image.png
+```
 
 ## List of commands:
 
