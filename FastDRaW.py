@@ -152,7 +152,8 @@ class FastDRaW():
         of the same category generate a low energy, where two labels of 
         different categories generate high energy, therefore precluding 
         redundent label information. The relevance map is computed using the 
-        sum of the distance transforms for each label category."""
+        sum of the distance transforms for each label category.
+        """
         
         self.ds_labels = np.zeros(self.dim)
         ds_relevance_map = 0
@@ -268,6 +269,7 @@ class FastDRaW():
     def update(self, labels, target_label=1, k=1):
         """Updates the segmentation according to `labels` using the
         FastDRaW algorithm.
+        
         The segmentation is computed in two stages. (1) coputes a coarse 
         segmentation on a down-sampled version of the image, (2) refines the 
         segmentation on the original image.
@@ -294,7 +296,7 @@ class FastDRaW():
             * If `return_full_prob` is True, array of floats of same shape as
               `image`. in witch each pixel is assigned the probability to
               belong to `target_label`.
-          """
+        """
         ## 1- Checking if inputs are valide
         _err = self._check_parameters(labels, target_label)
         if _err == -1:
@@ -320,8 +322,6 @@ class FastDRaW():
         mask = (binary_dilation(mask, disk(1)) - mask).astype(np.bool)
         # Compute the refinement region around the corse result
         self.maskROI = binary_dilation(mask, disk(3))
-#        relevance_map = distance_transform_edt(mask != 1)
-#        self.maskROI = (relevance_map <= 3)
             
         ## 4- Performe a fine RW segmentation on the full resolution image
         ##    only on the refinement region
