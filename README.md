@@ -3,7 +3,7 @@ FastDRaW – Fast Delineation by Random
 
 This software is under the MIT License. If you use this code in your research please cite the following paper:
 
-H.-E. Gueziri, L. Lakhdar, M. J. McGuffin and C. Laporte "FastDRaW – Fast Delineation by Random Walker: application to large images", MICCAI workshop on Interactive Medical Image Computation (IMIC), Athens, Greece, (2016).
+H.-E. Gueziri, L. Lakhdar, M. J. McGuffin and C. Laporte "FastDRaW – Fast Delineation by Random Walker: application to large images", MICCAI workshop on Interactive Medical Image Computing (IMIC), Athens, Greece, (2016).
 
 @author Houssem-Eddine Gueziri
 
@@ -47,7 +47,7 @@ python plot_fast_draw_segmentation.py
 A more advanced example using OpenCV interaction window is provided in 'opencv_demo/opencv_example.py' (requires to install PyOpenCV, see opencv_demo/README.md file for more details)
 
 ```shell
-cd  opencv_demo
+cd opencv_demo
 python opencv_example.py image.png
 ```
 
