@@ -1,0 +1,17 @@
+# unit test
+#########################################
+test_*.py
+test_results/*
+__FastDRaW3D.py
+
+# compiled pythons and exec
+#########################################
+*.pyc
+*.sh
+
+# image folder
+prostate/*
+deprecated/*
+images/*
+opencv_demo/*
+testing/*
