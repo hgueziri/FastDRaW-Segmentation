@@ -3,7 +3,7 @@ setup(
   name = 'FastDRaW',
   packages = ['FastDRaW'], 
   version = '1.1',
-  description = 'Segmentation algorithm using Fast Delineation by RAndom Walker',
+  description = 'Image segmentation algorithm using Fast Delineation by RAndom Walker',
   author = 'Houssem-Eddine Gueziri',
   author_email = 'houssem-eddine.gueziri.1@etsmtl.net',
   url = 'https://github.com/hgueziri/FastDRaW-Segmentation', 
