@@ -12,7 +12,6 @@ H.-E. Gueziri, L. Lakhdar, M. J. McGuffin and C. Laporte "FastDRaW – Fast Deli
 FastDRaW requires the following packages
 
 - [Scipy and Numpy](https://www.scipy.org/install.html)
-- [scikit-image](http://scikit-image.org/docs/dev/install.html) (for image processing tools)
 - [PyAMG](http://pyamg.org/) (for linear system solver)
 
 Or run
