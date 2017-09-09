@@ -21,7 +21,22 @@ sudo apt-get install build-essential python2.7-dev
 sudo pip install -r requirements.txt
 ```
 
-## Example:
+## Install:
+
+From PyPI:
+
+```shell
+sudo pip install FastDRaW
+```
+From git repository:
+
+```shell
+git clone https://github.com/hgueziri/FastDRaW-Segmentation.git
+cd FastDRaW-Segmentation
+sudo python setup.py install
+```
+
+## Usage example:
 
 ```python
 >>> from skimage.data import coins
@@ -30,23 +45,10 @@ sudo pip install -r requirements.txt
 >>> labels = np.zeros_like(image)
 >>> labels[[129, 199], [155, 155]] = 1 # label some pixels as foreground
 >>> labels[[162, 224], [131, 184]] = 2 # label some pixels as background
->>> fastdraw = FastDRaW(image, beta=100, downsampled_size=100)
+>>> fastdraw = FastDRaW(image, beta=100, downsampled_size=[100,100])
 >>> segm = fastdraw.update(labels)
 >>> plt.imshow(image,'gray')
 >>> plt.imshow(segm, alpha=0.7)
 ```
 
-An example using matplotlib for interactive demonstration is provided in 'plot_fast_draw_segmentation.py'. Use the mouse to draw labels, left click for foreground and right click for background.
-Use 'space bar' key to perform a segmentation.
-
-```shell
-python plot_fast_draw_segmentation.py
-```
-
-A more advanced example using OpenCV interaction window is provided in 'opencv_demo/opencv_example.py' (requires to install PyOpenCV, see opencv_demo/README.md file for more details)
-
-```shell
-cd opencv_demo
-python opencv_example.py image.png
-```
 
