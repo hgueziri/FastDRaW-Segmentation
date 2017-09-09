@@ -7,7 +7,7 @@ setup(
   author = 'Houssem-Eddine Gueziri',
   author_email = 'houssem-eddine.gueziri.1@etsmtl.net',
   url = 'https://github.com/hgueziri/FastDRaW-Segmentation', 
-  download_url = 'https://github.com/hgueziri/FastDRaW-Segmentation/archive/0.1.tar.gz', 
+  download_url = 'https://github.com/hgueziri/FastDRaW-Segmentation/archive/1.1.tar.gz', 
   keywords = ['segmentation', 'fastdraw', 'medical'], 
   classifiers = [],
 )
