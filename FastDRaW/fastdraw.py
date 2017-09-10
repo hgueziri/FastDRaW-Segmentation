@@ -58,7 +58,7 @@ class Segmenter():
     >>> labels = np.zeros_like(image)
     >>> labels[[129, 199], [155, 155]] = 1 # label some pixels as foreground
     >>> labels[[162, 224], [131, 184]] = 2 # label some pixels as background
-    >>> fastdraw = fastdraw_segmenter(image, beta=100, downsampled_size=100)
+    >>> fastdraw = Segmenter(image, beta=100, downsampled_size=100)
     >>> segm = fastdraw.update(labels)
     >>> plt.imshow(image,'gray')
     >>> plt.imshow(segm, alpha=0.7)
@@ -67,10 +67,10 @@ class Segmenter():
     def __init__(self, image, beta=300, downsampled_size=[100,100], tol=1.e-3):
         
         try:
-            from pyamg import ruge_stuben_solver
-            self._pyamg_found = True
-        except ImportError:
-            self._pyamg_found = False
+			from pyamg import ruge_stuben_solver
+			self._pyamg_found = True
+		except ImportError:
+			self._pyamg_found = False
 
         assert (beta > 0), 'beta should be positive.'
 
@@ -216,7 +216,7 @@ class Segmenter():
         if self._pyamg_found:
 	        ml = ruge_stuben_solver(Lu)
 	        M = ml.aspreconditioner(cycle='V')
-        else:
+		else:
 	    	M = None
         xu = cg(Lu, -rhs.todense(), tol=1e-3, M=M, maxiter=120)[0]
 
@@ -267,7 +267,7 @@ class Segmenter():
         if self._pyamg_found:
 	        ml = ruge_stuben_solver(Lu)
 	        M = ml.aspreconditioner(cycle='V')
-        else:
+	    else:
 	    	M = None
         xu = cg(Lu, -rhs.todense(), tol=1e-3, M=M, maxiter=120)[0]
         
