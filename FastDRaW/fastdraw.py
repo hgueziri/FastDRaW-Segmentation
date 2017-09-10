@@ -67,10 +67,10 @@ class Segmenter():
     def __init__(self, image, beta=300, downsampled_size=[100,100], tol=1.e-3):
         
         try:
-			from pyamg import ruge_stuben_solver
-			self._pyamg_found = True
-		except ImportError:
-			self._pyamg_found = False
+            from pyamg import ruge_stuben_solver
+            self._pyamg_found = True
+        except ImportError:
+            self._pyamg_found = False
 
         assert (beta > 0), 'beta should be positive.'
 
@@ -214,10 +214,10 @@ class Segmenter():
         Lu = self.ds_L[unlabeled][:, unlabeled]
         # 3.3- Solve the linear equation Lu xu = -BT xs
         if self._pyamg_found:
-	        ml = ruge_stuben_solver(Lu)
-	        M = ml.aspreconditioner(cycle='V')
-		else:
-	    	M = None
+            ml = ruge_stuben_solver(Lu)
+            M = ml.aspreconditioner(cycle='V')
+        else:
+            M = None
         xu = cg(Lu, -rhs.todense(), tol=1e-3, M=M, maxiter=120)[0]
 
         ds_probability = np.zeros_like(ds_labels, dtype=np.float32)
@@ -265,10 +265,10 @@ class Segmenter():
         
         # Solve the linear equation Lu xu = -BT xs
         if self._pyamg_found:
-	        ml = ruge_stuben_solver(Lu)
-	        M = ml.aspreconditioner(cycle='V')
-	    else:
-	    	M = None
+            ml = ruge_stuben_solver(Lu)
+            M = ml.aspreconditioner(cycle='V')
+        else:
+            M = None
         xu = cg(Lu, -rhs.todense(), tol=1e-3, M=M, maxiter=120)[0]
         
         probability = np.zeros(self.size, dtype=np.float32)
