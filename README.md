@@ -39,13 +39,14 @@ sudo python setup.py install
 ## Usage example:
 
 ```python
+>>> from FastDRaW import Segmenter
 >>> from skimage.data import coins
 >>> import matplotlib.pyplot as plt
 >>> image = coins()
 >>> labels = np.zeros_like(image)
 >>> labels[[129, 199], [155, 155]] = 1 # label some pixels as foreground
 >>> labels[[162, 224], [131, 184]] = 2 # label some pixels as background
->>> fastdraw = FastDRaW(image, beta=100, downsampled_size=[100,100])
+>>> fastdraw = Segmenter(image, beta=100, downsampled_size=[100,100])
 >>> segm = fastdraw.update(labels)
 >>> plt.imshow(image,'gray')
 >>> plt.imshow(segm, alpha=0.7)
